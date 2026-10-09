@@ -3,8 +3,8 @@
  * DUALTRON / Minimotors Tuning - Web Bluetooth. Implements the BLE protocol proven from
  * com.minimotors.escooter (FastBLE). Proven (app_side, code-verified): GATT service 0xFE60 with write
  * char 0xFE61 + notify char 0xFE62; the fixed 16-byte frame (0xAA | seed=Random(0..9) | opcode |
- * 11 payload bytes each stored as value+secret | checksum=sum(bytes[1..13])&0xFF | 0xEE); the reversible
- * payload obfuscation secret=((((seed+33)*73)^169)&249) carried in cleartext; read opcodes 0x00 telemetry,
+ * 11 payload bytes each stored as value+mask | checksum=sum(bytes[1..13])&0xFF | 0xEE); the reversible
+ * payload obfuscation mask = (((seed+33)*73) ^ 169) & 249 carried in cleartext; read opcodes 0x00 telemetry,
  * 0x01 system, 0x02 user, 0x05 controller/max-speed page; write opcodes 0x81 system (legal speed cap
  * byte0 bits6-7, max gear byte5 bits5-7, CCS byte4 bit6, PAS byte4 bit7, motor-protect temp byte10) and
  * 0x82 user (per-field selector writes: top-speed, start-mode, torque, brake, soft-start, km/mi, ABS, ECO,
@@ -16,7 +16,7 @@
  */
 
 // Pre-commit cache-buster auto-bumps BUILD and every ?v= on any web-asset change.
-const BUILD = 'v3';
+const BUILD = 'v4';
 
 // =========================================================================================
 //  VERIFIED PROTOCOL CORE (code-proven from com.minimotors.escooter; self-test below runs at load)
@@ -132,18 +132,18 @@ function logDiagnosticHeader() {
 }
 
 // --------------------------- frame + obfuscation (PacketDataUtils.java:41-43, 1358-1368) ---------------------------
-// 16-byte frame: [0]=0xAA | [1]=seed(0..9) | [2]=opcode | [3..13]=11 payload bytes, each (value+secret)&0xFF
+// 16-byte frame: [0]=0xAA | [1]=seed(0..9) | [2]=opcode | [3..13]=11 payload bytes, each (value+mask)&0xFF
 //   | [14]=checksum=(sum of bytes[1..13])&0xFF | [15]=0xEE.
-// secret = ((((seed+33)*73) ^ 169) & 249), carried in cleartext via the seed - reversible, not encryption.
-function getSecret(seed) { return ((((seed + 33) * 73) ^ 169) & 249) & 0xff; }
+// mask = ((((seed+33)*73) ^ 169) & 249), carried in cleartext via the seed - reversible, not encryption.
+function getMask(seed) { return ((((seed + 33) * 73) ^ 169) & 249) & 0xff; }
 function buildFrame(op, values, seed) {
   if (seed == null) seed = Math.floor(Math.random() * 10);
   seed &= 0xff;
-  const secret = getSecret(seed);
+  const mask = getMask(seed);
   const vals = (values || []).slice(0, 11).map(v => v & 0xff);
   while (vals.length < 11) vals.push(0);
   const f = [0xaa, seed, op & 0xff];
-  for (const v of vals) f.push((v + secret) & 0xff);
+  for (const v of vals) f.push((v + mask) & 0xff);
   let sum = 0; for (let i = 1; i <= 13; i++) sum += f[i] & 0xff;
   f.push(sum & 0xff);   // checksum
   f.push(0xee);         // footer
@@ -156,10 +156,10 @@ function validFrame(f) {
   let sum = 0; for (let i = 1; i <= 13; i++) sum += f[i] & 0xff;
   return f[14] === (sum & 0xff);
 }
-// RX: strip the mask from the 11 payload bytes (PacketDataUtils.readData subtracts the secret)
+// RX: strip the mask from the 11 payload bytes (PacketDataUtils.readData subtracts the mask)
 function payloadOf(f) {
-  const secret = getSecret(f[1] & 0xff);
-  const p = []; for (let i = 3; i <= 13; i++) p.push((f[i] - secret) & 0xff);
+  const mask = getMask(f[1] & 0xff);
+  const p = []; for (let i = 3; i <= 13; i++) p.push((f[i] - mask) & 0xff);
   return p;   // p[0..10]
 }
 
@@ -277,15 +277,15 @@ function parseFrame(f) {
 // load-time self-test: the builder must match hand-computed vectors, every built frame must re-validate
 const FRAME_OK = (function () {
   const eq = (a, b) => a.length === b.length && a.every((v, i) => (v & 0xff) === (b[i] & 0xff));
-  // getSecret: seed0=0xC0, seed1=0x19, seed2=0x50 (hand-derived).
-  const s0 = getSecret(0) === 0xc0, s1 = getSecret(1) === 0x19, s2 = getSecret(2) === 0x50;
+  // getMask: seed0=0xC0, seed1=0x19, seed2=0x50 (hand-derived).
+  const s0 = getMask(0) === 0xc0, s1 = getMask(1) === 0x19, s2 = getMask(2) === 0x50;
   // v1: op 0x00, empty payload, seed 0 -> AA 00 00 then 11x C0, cksum (0+0+11*0xC0)&0xFF=0x40, EE
   const t1 = eq(buildFrame(0x00, [], 0),
     [0xaa, 0x00, 0x00, 0xc0, 0xc0, 0xc0, 0xc0, 0xc0, 0xc0, 0xc0, 0xc0, 0xc0, 0xc0, 0xc0, 0x40, 0xee]);
-  // v2: op 0x81, payload[0]=0x80 (20 km/h cap), seed 1, secret 0x19 -> byte3=0x99, byte4..13=0x19
+  // v2: op 0x81, payload[0]=0x80 (20 km/h cap), seed 1, mask 0x19 -> byte3=0x99, byte4..13=0x19
   const t2 = eq(buildFrame(0x81, [0x80], 1),
     [0xaa, 0x01, 0x81, 0x99, 0x19, 0x19, 0x19, 0x19, 0x19, 0x19, 0x19, 0x19, 0x19, 0x19, 0x15, 0xee]);
-  // v3: op 0x82, payload[2]=0x3F (top-speed 63), seed 2, secret 0x50 -> byte5=0x8F, rest 0x50
+  // v3: op 0x82, payload[2]=0x3F (top-speed 63), seed 2, mask 0x50 -> byte5=0x8F, rest 0x50
   const t3 = eq(buildFrame(0x82, [0x00, 0x00, 0x3f], 2),
     [0xaa, 0x02, 0x82, 0x50, 0x50, 0x8f, 0x50, 0x50, 0x50, 0x50, 0x50, 0x50, 0x50, 0x50, 0x33, 0xee]);
   return s0 && s1 && s2 && t1 && t2 && t3 &&
@@ -789,7 +789,8 @@ window.addEventListener('DOMContentLoaded', () => {
   ['help-x', 'help-close'].forEach(id => { const b = $(id); if (b) b.addEventListener('click', closeHelp); });
   { const b = $('link-disclaimer'); if (b) b.addEventListener('click', e => { e.preventDefault(); openHelpText(t('footDisclaimer'), t('disclaimerText')); }); }
 
-  { const cb = $('public-log'); if (cb) { let saved = null; try { saved = localStorage.getItem(LS.PUBLOG); } catch (e) {} publicLog = saved !== '0'; cb.checked = publicLog; cb.addEventListener('change', () => { publicLog = cb.checked; try { localStorage.setItem(LS.PUBLOG, cb.checked ? '1' : '0'); } catch (e) {} renderLog(); }); } }
+  { const cb = $('public-log'); if (cb) { let saved = null; try { saved = localStorage.getItem(LS.PUBLOG); } catch (e) {} publicLog = saved !== '0'; cb.checked = publicLog; cb.addEventListener('change', () => { publicLog = cb.checked; try { localStorage.setItem(LS.PUBLOG, cb.checked ? '1' : '0'); } catch (e) {} logSys('public-log: ' + (cb.checked ? 'on (anonymizing device name/id)' : 'off')); renderLog(); }); } }
+  { const cb = $('showall'); if (cb) cb.addEventListener('change', () => { logSys('show-all-frames: ' + (cb.checked ? 'on' : 'off')); renderLog(); }); }
   { const cb = $('diag-log'); if (cb) { cb.addEventListener('change', () => { diag = cb.checked; logSys(diag ? 'diagnostic log on' : 'diagnostic log off'); }); } }
   { const b = $('btn-clear-log'); if (b) b.addEventListener('click', () => { logBuffer = []; $('log').textContent = ''; logDiagnosticHeader(); }); }
   { const b = $('btn-copy-log'); if (b) b.addEventListener('click', () => navigator.clipboard.writeText(logText()).then(() => logSys('log copied')).catch(() => {})); }
