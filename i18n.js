@@ -172,7 +172,6 @@ window.I18N = {
     warnCcs: 'Das schaltet den System-Tempomat (CCS) ein oder aus.',
     warnPas: 'Das schaltet die Schiebehilfe (PAS) ein oder aus.',
     warnMotorProt: 'Das ändert die Motorschutz-Temperatur in den Werkseinstellungen. Ein falscher Wert kann den thermischen Schutz des Motors aushebeln.',
-    disclaimerText: 'Dieses Werkzeug ist eine Machbarkeitsstudie, kein fertiges Produkt. Es gibt keine Gewährleistung und keine Zusicherung fehlerfreien Betriebs. Das Aufheben der Drosselung hebt die ABE auf und der Betrieb auf öffentlichen Wegen ist dann nicht erlaubt. Nutze es nur am eigenen Fahrzeug und auf eigenes Risiko. Die Seite spricht nur lokal über Bluetooth mit dem Gerät, es werden keine Daten an einen Server gesendet. DUALTRON und Minimotors sind Marken des jeweiligen Inhabers. Dieses Projekt ist unabhängig und steht in keiner Verbindung zu Minimotors.',
 
     errNoWebBt: 'Dieser Browser hat kein Web Bluetooth. Nutze Chrome, Edge oder Bluefy (iOS).',
     errNotConnected: 'nicht verbunden',
@@ -367,7 +366,6 @@ window.I18N = {
     warnCcs: 'This turns the system cruise control (CCS) on or off.',
     warnPas: 'This turns the push assist (PAS) on or off.',
     warnMotorProt: 'This changes the motor-protection temperature in the factory settings. A wrong value can defeat the motor thermal protection.',
-    disclaimerText: 'This tool is a feasibility study, not a finished product. There is no warranty and no guarantee of error-free operation. Removing the restriction voids the type approval and riding on public roads is then not allowed. Use it only on your own vehicle and at your own risk. The page talks to the device locally over Bluetooth only, no data is sent to any server. DUALTRON and Minimotors are trademarks of their respective owner. This project is independent and not affiliated with Minimotors.',
 
     errNoWebBt: 'This browser has no Web Bluetooth. Use Chrome, Edge or Bluefy (iOS).',
     errNotConnected: 'not connected',
