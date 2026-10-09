@@ -16,7 +16,7 @@
  */
 
 // Pre-commit cache-buster auto-bumps BUILD and every ?v= on any web-asset change.
-const BUILD = 'v2';
+const BUILD = 'v3';
 
 // =========================================================================================
 //  VERIFIED PROTOCOL CORE (code-proven from com.minimotors.escooter; self-test below runs at load)
